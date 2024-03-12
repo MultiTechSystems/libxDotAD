@@ -1,8 +1,14 @@
 # libxDotAD
 Stable version of the xDotAD library for mbed-os. This version of the library is suitable for deployment scenarios.
 
-The Dot library provides a LoRaWan certified stack for LoRa communication using MultiTech mDot and xDot devices. 
-This repository is for mbed-os 6 and built using ARM Compiler 6.11
+#### xDot Advanced
+* mbed-os-6.18.0 (use latest until new tag is available)
+* [Arm Compiler](https://developer.arm.com/tools-and-software/embedded/arm-compiler/downloads/version-6) version 6.16 or newer
+* [GNU Arm Embedded Toolchain](https://developer.arm.com/tools-and-software/open-source-software/developer-tools/gnu-toolchain/gnu-rm/downloads) version 10 2021.07 or newer
+  
+
+The Dot library provides a LoRaWan certified stack for LoRa communication using MultiTech mDot and xDot devices. The stack is compatible with mbed 6.
+
 
 The following code snippet demonstrates how to create a channel plan and inject it into the stack.
 
