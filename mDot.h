@@ -662,6 +662,12 @@ class mDot {
         int32_t setClass(std::string newClass);
 
         /**
+         * Set the device class A, B or C without changing configuration, revert class after reset
+         *  @returns MDOT_OK if success
+         */
+        int32_t setTempClass(std::string newClass);
+
+        /**
          * Get the device class A, B or C
          *  @returns MDOT_OK if success
          */
@@ -1281,9 +1287,15 @@ class mDot {
 
         /**
          * Get time on air
-         * @returns the amount of time (in ms) it would take to send bytes bytes based on current configuration
+         * @returns the amount of time (in ms) it would take to send bytes based on current configuration
          */
         uint32_t getTimeOnAir(uint8_t bytes);
+
+        /**
+         * Get time on air for last transmitted packet
+         * @returns the amount of time (in ms) it took to send bytes based on current configuration
+         */
+        uint32_t getTimeOnAir();
 
         /**
          * Get min frequency
@@ -1362,13 +1374,16 @@ class mDot {
 
         /**
          *
-         * get/set fota enabled
+         * get/set fota mode
          *
-         * true == FOTA is on
+         * 0 = disabled
+         * 1 = enabled
+         * 4 = passthrough mode
          * set function returns MDOT_OK if success
          */
-        int32_t setFota(const bool& on);
-        bool getFota();
+
+        int32_t setFota(const uint8_t& mode);
+        uint8_t getFota();
 
         /**
          *
@@ -1539,7 +1554,9 @@ class mDot {
          * For the XDOT
          *      in sleep mode, the device can be woken up on GPIO (0-3), UART1_RX, WAKE or by the RTC alarm
          *      in deepsleep mode, the device can only be woken up using the WKUP pin (PA0, WAKE) or by the RTC alarm
-         * @returns Milliseconds slept on success
+         * For the xDot-AD/ES
+         *      in sleep or deepsleep modes, the device can be woken up on GPIO (0-3), UART1_RX, WAKE or by the RTC alarm
+         * @returns Milliseconds slept on success, MDOT_NOT_IDLE if device is busy with transmit/receive processing or FOTA.
          */
         int32_t sleep(const uint32_t& interval, const uint8_t& wakeup_mode = RTC_ALARM, const bool& deepsleep = true);
 
@@ -1950,6 +1967,7 @@ class mDot {
         void openRxWindow(uint32_t timeout, uint8_t bandwidth = 0);
         void closeRxWindow();
         void sendContinuous(bool enable=true, uint32_t timeout=0, uint32_t frequency=0, int8_t txpower=-1);
+        void sendContinuous(bool enable, uint32_t timeout, uint32_t frequency, int8_t pa, int8_t hp, int8_t tx);
         int32_t setDeviceId(const std::vector<uint8_t>& id);
 
 #if defined(USE_NVM_CONFIG)

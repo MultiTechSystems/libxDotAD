@@ -87,6 +87,10 @@ void ChannelPlan_AU915::Init() {
     _freqUStep500k = AU915_500K_FREQ_STEP;
     _freqDBase500k = AU915_500K_DBASE;
     _freqDStep500k = AU915_500K_DSTEP;
+
+    _defaultRx2Frequency = AU915_500K_DBASE;
+    _defaultRx2Datarate = DR_8;
+
     GetSettings()->Session.Rx2Frequency = AU915_500K_DBASE;
 
     _beaconSize = sizeof(BCNPayload);
@@ -171,11 +175,22 @@ uint8_t ChannelPlan_AU915::HandleJoinAccept(const uint8_t* buffer, uint8_t size)
         for (int i = 13; i < size - 5; i += 2) {
             SetChannelMask((i-13)/2, buffer[i+1] << 8 | buffer[i]);
         }
+
+        if (GetSettings()->Session.TxDatarate == GetMaxDatarate() && GetChannelMask()[4] == 0x0) {
+            GetSettings()->Session.TxDatarate = GetMaxDatarate() - 1;
+        }
     } else {
+        uint8_t fsb = 0;
+
+        if (_txChannel < 64)
+            fsb = (_txChannel / 8);
+        else
+            fsb = (_txChannel % 8);
+
         // Reset state of random channels to enable the last used FSB for the first tx to confirm network settings
         _randomChannel.ChannelState125K(0);
-        _randomChannel.MarkAllSubbandChannelsUnused(_txFrequencySubBand-1);
-        _randomChannel.ChannelState500K(1 << (_txFrequencySubBand - 1));
+        _randomChannel.MarkAllSubbandChannelsUnused(fsb);
+        _randomChannel.ChannelState500K(1 << fsb);
         EnableDefaultChannels();
     }
 
@@ -268,8 +283,8 @@ uint8_t ChannelPlan_AU915::SetTxConfig() {
         }
     }
 
-    logDebug("Session pwr: %d ant: %d max: %d", GetSettings()->Session.TxPower, GetSettings()->Network.AntennaGain, max_pwr);
-    logDebug("Radio Power index: %d output: %d total: %d", pwr, RADIO_POWERS[pwr], RADIO_POWERS[pwr] + GetSettings()->Network.AntennaGain);
+    logInfo("Session pwr: %d ant: %d max: %d", GetSettings()->Session.TxPower, GetSettings()->Network.AntennaGain, max_pwr);
+    logInfo("Radio Power index: %d output: %d total: %d", pwr, RADIO_POWERS[pwr], RADIO_POWERS[pwr] + GetSettings()->Network.AntennaGain);
 
     uint32_t bw = txDr.Bandwidth;
     uint32_t sf = txDr.SpreadingFactor;
@@ -291,7 +306,7 @@ uint8_t ChannelPlan_AU915::SetTxConfig() {
 
     GetRadio()->SetTxConfig(modem, pwr, fdev, bw, sf, cr, pl, false, crc, false, 0, iq, 3e3);
 
-    logDebug("TX PWR: %u DR: %u SF: %u BW: %u CR: %u PL: %u CRC: %d IQ: %d", pwr, txDr.Index, sf, bw, cr, pl, crc, iq);
+    logInfo("TX PWR: %u DR: %u SF: %u BW: %u CR: %u PL: %u CRC: %d IQ: %d", pwr, txDr.Index, sf, bw, cr, pl, crc, iq);
 
     return LORA_OK;
 }
@@ -811,7 +826,7 @@ void lora::ChannelPlan_AU915::EnableDefaultChannels() {
 
 uint8_t ChannelPlan_AU915::GetNextChannel()
 {
-    bool error = true;
+    bool error = false;
 
     if (GetSettings()->Session.AggregatedTimeOffEnd != 0) {
         return LORA_AGGREGATED_DUTY_CYCLE;
@@ -830,6 +845,10 @@ uint8_t ChannelPlan_AU915::GetNextChannel()
 
         GetRadio()->SetChannel(GetSettings()->Network.TxFrequency);
         return LORA_OK;
+    }
+
+    if (GetSettings()->Session.TxDatarate == GetMaxDatarate() && GetChannelMask()[4] == 0x0) {
+        GetSettings()->Session.TxDatarate = GetMaxDatarate() - 1;
     }
 
     uint8_t start = 0;
@@ -935,37 +954,42 @@ uint8_t ChannelPlan_AU915::GetNextChannel()
 uint8_t lora::ChannelPlan_AU915::GetJoinDatarate() {
     uint8_t dr = GetSettings()->Session.TxDatarate;
 
-    if (GetSettings()->Test.DisableRandomJoinDatarate == lora::OFF) {
-        uint8_t fsb = 1;
-        uint8_t dr4_fsb = 1;
-        bool altdr = false;
+    uint8_t fsb = 1;
+    uint8_t dr4_fsb = 1;
+    bool altdr = false;
 
-        altdr = (GetSettings()->Network.DevNonce % 2) == 0;
+    altdr = (GetSettings()->Network.DevNonce % 2) == 0;
 
-        if ((GetSettings()->Network.DevNonce % 9) == 0) {
-            // set DR4 fsb to 1-8 incrementing every 9th join
-            dr4_fsb = ((GetSettings()->Network.DevNonce / 9) % 8) + 1;
-            fsb = 9;
+    if ((GetSettings()->Network.DevNonce % 9) == 0) {
+        // set DR4 fsb to 1-8 incrementing every 9th join
+        dr4_fsb = ((GetSettings()->Network.DevNonce / 9) % 8) + 1;
+        fsb = 9;
+    } else {
+        fsb = (GetSettings()->Network.DevNonce % 9);
+    }
+
+    if (GetSettings()->Network.FrequencySubBand == 0) {
+        if (fsb < 9) {
+            SetFrequencySubBand(fsb);
         } else {
-            fsb = (GetSettings()->Network.DevNonce % 9);
-        }
-
-        if (GetSettings()->Test.DisableRandomJoinDatarate == lora::OFF) {
-            if (GetSettings()->Network.FrequencySubBand == 0) {
-                if (fsb < 9) {
-                    SetFrequencySubBand(fsb);
-                    dr = (_plan == US915 ? lora::DR_0 : lora::DR_2); // US or AU
-                } else {
-                    SetFrequencySubBand(dr4_fsb);
-                    dr = (_plan == US915 ? lora::DR_4 : lora::DR_6); // US or AU
-                }
-            } else if (altdr && CountBits(_channelMask[4] > 0)) {
-                dr = (_plan == US915 ? lora::DR_4 : lora::DR_6); // US or AU
-            } else {
-                dr = (_plan == US915 ? lora::DR_0 : lora::DR_2); // US or AU
-            }
+            SetFrequencySubBand(dr4_fsb);
         }
     }
+
+    if (GetSettings()->Test.DisableRandomJoinDatarate == lora::OFF) {
+        if (GetSettings()->Network.FrequencySubBand == 0) {
+            if (fsb < 9) {
+                dr = (_plan == US915 ? lora::DR_0 : lora::DR_2); // US or AU
+            } else {
+                dr = (_plan == US915 ? lora::DR_4 : lora::DR_6); // US or AU
+            }
+        } else if (altdr && CountBits(_channelMask[4] > 0)) {
+            dr = (_plan == US915 ? lora::DR_4 : lora::DR_6); // US or AU
+        } else {
+            dr = (_plan == US915 ? lora::DR_0 : lora::DR_2); // US or AU
+        }
+    }
+    
 
     return dr;
 }
