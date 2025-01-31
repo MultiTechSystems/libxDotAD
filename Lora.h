@@ -232,7 +232,8 @@ namespace lora {
         MAC_RX2,
         MAC_RXC,
         MAC_TX,
-        MAC_JOIN
+        MAC_JOIN,
+        MAC_ERROR
     };
 
     /**
@@ -448,6 +449,8 @@ namespace lora {
             bool DataPending;               //!< Indicates network has data pending for this address
             uint16_t PingPeriod;
             int32_t NextPingSlot;
+            uint32_t MaxCounter;
+            bool Active;
             MulticastSession() :
                 Periodicity(-1)
             {

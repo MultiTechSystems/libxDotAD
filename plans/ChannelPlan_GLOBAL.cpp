@@ -1325,15 +1325,7 @@ uint8_t ChannelPlan_GLOBAL::SetTxConfig() {
             break;
     }
 
-    for (int i = RADIO_POWERS_SIZE; i >= 0; i--) {
-        if (RADIO_POWERS[i] <= pwr) {
-            pwr = i;
-            break;
-        }
-        if (i == 0) {
-            pwr = i;
-        }
-    }
+    pwr = getTxPowerIndex(pwr);
 
     logInfo("Session pwr: %d ant: %d max: %d", GetSettings()->Session.TxPower, GetSettings()->Network.AntennaGain, max_pwr);
     logInfo("Radio Power index: %d output: %d total: %d", pwr, RADIO_POWERS[pwr], RADIO_POWERS[pwr] + GetSettings()->Network.AntennaGain);
@@ -1557,8 +1549,17 @@ RxWindow ChannelPlan_GLOBAL::GetRxWindow(uint8_t window, int8_t id) {
                 index = GetSettings()->Session.PingSlotDatarateIndex;
             }
             break;
+        case RXC:
+            if (id > 0 && id <= MAX_MULTICAST_SESSIONS) {
+                if (GetSettings()->Multicast[id - 1].Active) {
+                    rxw.Frequency = GetSettings()->Multicast[id - 1].Frequency;
+                    index = GetSettings()->Multicast[id - 1].DatarateIndex;
+                    break;
+                }
+            }
+            // fall-through
 
-        // RX2, RXC, RX_TEST, etc..
+        // RX2,  RX_TEST, etc..
         default:
             if (IsPlanFixed() && GetSettings()->Network.Mode == lora::PRIVATE_MTS) {
                 if (_txChannel < _numChans125k) {

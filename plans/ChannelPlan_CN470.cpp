@@ -237,16 +237,14 @@ uint8_t ChannelPlan_CN470::SetTxConfig() {
     }
 
     pwr = std::min < int8_t > (pwr, max_pwr);
+    pwr -= GetSettings()->Network.AntennaGain;
 
-    for (int i = RADIO_POWERS_SIZE; i >= 0; i--) {
-        if (RADIO_POWERS[i] <= pwr) {
-            pwr = i;
-            break;
-        }
-        if (i == 0) {
-            pwr = i;
-        }
-    }
+    pwr = getTxPowerIndex(pwr);
+
+    // CN470 is 1-22
+    if (pwr == 0)
+        pwr = 1;
+    
 
     logInfo("Session pwr: %d ant: %d max: %d", GetSettings()->Session.TxPower, GetSettings()->Network.AntennaGain, max_pwr);
     logInfo("Radio Power index: %d output: %d total: %d", pwr, RADIO_POWERS[pwr], RADIO_POWERS[pwr] + GetSettings()->Network.AntennaGain);
@@ -269,9 +267,12 @@ uint8_t ChannelPlan_CN470::SetTxConfig() {
         crc = true;
     }
 
-    GetRadio()->SetTxConfig(modem, pwr, fdev, bw, sf, cr, pl, false, crc, false, 0, iq, 3e3);
-
     logInfo("TX PWR: %u DR: %u SF: %u BW: %u CR: %u PL: %u CRC: %d IQ: %d", pwr, txDr.Index, sf, bw, cr, pl, crc, iq);
+
+    // CN470 is 1-22 dBm but SX table is 0-21 where 21 == 22 dBm
+    pwr -= 1;
+    
+    GetRadio()->SetTxConfig(modem, pwr, fdev, bw, sf, cr, pl, false, crc, false, 0, iq, 3e3);
 
     return LORA_OK;
 }
@@ -368,6 +369,7 @@ RxWindow ChannelPlan_CN470::GetRxWindow(uint8_t window, int8_t id) {
 
             if (GetSettings()->Session.TxDatarate > GetSettings()->Session.Rx1DatarateOffset) {
                 index = GetSettings()->Session.TxDatarate - GetSettings()->Session.Rx1DatarateOffset;
+                index = std::max<uint8_t>(0, index);
             } else {
                 index = 0;
             }
@@ -388,8 +390,17 @@ RxWindow ChannelPlan_CN470::GetRxWindow(uint8_t window, int8_t id) {
                 index = GetSettings()->Session.PingSlotDatarateIndex;
             }
             break;
+        case RXC:
+            if (id > 0 && id <= MAX_MULTICAST_SESSIONS) {
+                if (GetSettings()->Multicast[id - 1].Active) {
+                    rxw.Frequency = GetSettings()->Multicast[id - 1].Frequency;
+                    index = GetSettings()->Multicast[id - 1].DatarateIndex;
+                    break;
+                }
+            }
+            // fall-through
 
-        // RX2, RXC, RX_TEST, etc..
+        // RX2,  RX_TEST, etc..
         default:
             rxw.Frequency = GetSettings()->Session.Rx2Frequency;
             index = GetSettings()->Session.Rx2DatarateIndex;
@@ -557,7 +568,7 @@ uint8_t ChannelPlan_CN470::HandleAdrCommand(const uint8_t* payload, uint8_t inde
         status &= 0xFD; // Datarate KO
     }
     //
-    // Remark MaxTxPower = 0 and MinTxPower = 14
+    // Remark MaxTxPower = 0 and MinTxPower = 8
     //
     if (power != 0xF && power > 8) {
         status &= 0xFB; // TxPower KO
